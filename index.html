@@ -168,6 +168,7 @@
 <div id="header">
   <span id="title">TACTICS</span>
   <button id="palette-btn">PALETTE</button>
+  <div id="haptic-dbg" style="position:fixed;bottom:8px;left:8px;font-size:10px;color:#0f0;font-family:monospace;opacity:0.7;pointer-events:none;"></div>
 </div>
 
 <div id="gear-area">
@@ -346,9 +347,12 @@ function playClick() {
 
 // ─── Fire click (haptics + pawl) ──────────────────────────────────────────────
 function fireClick(dir) {
-  if (navigator.vibrate) navigator.vibrate([20, 10, 15]);
+  const ok = navigator.vibrate ? navigator.vibrate([20, 10, 15]) : false;
   if (isIOS) playClick();
   firePawl(dir);
+  // Debug: show vibrate result briefly
+  const dbg = document.getElementById('haptic-dbg');
+  if (dbg) { dbg.textContent = `vibrate: ${navigator.vibrate ? 'API✓ ret=' + ok : 'NO API'}`; }
 }
 
 // ─── Pointer event helpers ────────────────────────────────────────────────────
