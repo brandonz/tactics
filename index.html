@@ -346,7 +346,7 @@ function playClick() {
 
 // ─── Fire click (haptics + pawl) ──────────────────────────────────────────────
 function fireClick(dir) {
-  if (navigator.vibrate) navigator.vibrate(8);
+  if (navigator.vibrate) navigator.vibrate([12, 5, 8]);
   if (isIOS) playClick();
   firePawl(dir);
 }
