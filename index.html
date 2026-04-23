@@ -346,7 +346,7 @@ function playClick() {
 
 // ─── Fire click (haptics + pawl) ──────────────────────────────────────────────
 function fireClick(dir) {
-  if (navigator.vibrate) navigator.vibrate([12, 5, 8]);
+  if (navigator.vibrate) navigator.vibrate([20, 10, 15]);
   if (isIOS) playClick();
   firePawl(dir);
 }
@@ -368,6 +368,8 @@ function pointerState(e) {
 
 canvas.addEventListener('pointerdown', e => {
   if (tracking) return;
+  // Prime vibration API on Android with a silent 1ms pulse on first touch
+  if (navigator.vibrate) navigator.vibrate(1);
   if (isIOS) {
     initAudio();
     if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
