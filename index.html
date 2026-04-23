@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>TACTICS</title>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --color-bg: #0a0f0a;
+      --color-gear: #39ff14;
+      --color-glow: #00ff41;
+      --color-accent: #7fff00;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background: var(--color-bg);
+      font-family: 'Press Start 2P', monospace;
+      filter: brightness(1.05) contrast(1.1);
+    }
+
+    #header {
+      width: 100%;
+      height: 40px;
+      min-height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      border-bottom: 1px solid var(--color-gear);
+      flex-shrink: 0;
+      z-index: 2;
+    }
+
+    #title {
+      color: var(--color-gear);
+      font-size: 12px;
+      text-shadow: 0 0 8px var(--color-glow), 0 0 20px var(--color-glow);
+    }
+
+    #palette-btn {
+      background: none;
+      border: 1px solid var(--color-gear);
+      color: var(--color-gear);
+      font-family: 'Press Start 2P', monospace;
+      font-size: 7px;
+      padding: 5px 8px;
+      cursor: pointer;
+      text-shadow: 0 0 6px var(--color-glow);
+      outline: none;
+      transition: background 0.1s;
+    }
+
+    #palette-btn:active {
+      background: var(--color-gear);
+      color: var(--color-bg);
+    }
+
+    #gear-area {
+      flex: 1;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 0;
+      position: relative;
+    }
+
+    canvas {
+      display: block;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      filter: drop-shadow(0 0 8px var(--color-glow))
+              drop-shadow(0 0 20px var(--color-glow));
+      touch-action: none;
+      cursor: grab;
+      flex-shrink: 0;
+    }
+
+    canvas:active { cursor: grabbing; }
+
+    #stats {
+      width: 100%;
+      height: 48px;
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 28px;
+      flex-shrink: 0;
+    }
+
+    .stat {
+      color: var(--color-gear);
+      font-size: 10px;
+      text-shadow: 0 0 8px var(--color-glow);
+      letter-spacing: 1px;
+    }
+
+    /* Pawl: downward-pointing triangle via clip-path */
+    #pawl {
+      position: fixed;
+      width: 12px;
+      height: 14px;
+      background: var(--color-accent);
+      clip-path: polygon(0% 0%, 100% 0%, 50% 100%);
+      opacity: 0.5;
+      pointer-events: none;
+      z-index: 5;
+      transform-origin: center top;
+      transition: transform 80ms cubic-bezier(0.2, 0, 0.8, 1),
+                  background-color 80ms ease,
+                  opacity 80ms ease;
+    }
+
+    #pawl.clicked {
+      background-color: #ffffff;
+      opacity: 1;
+      transition: none;
+    }
+
+    .scanlines {
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        to bottom,
+        transparent 0px, transparent 2px,
+        rgba(0,0,0,0.15) 2px, rgba(0,0,0,0.15) 4px
+      );
+      mix-blend-mode: multiply;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    .vignette {
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(ellipse at center,
+        transparent 60%, rgba(0,0,0,0.7) 100%);
+      pointer-events: none;
+      z-index: 11;
+    }
+
+    .noise {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 8;
+      opacity: 0.045;
+      filter: url(#noise-filter);
+      background: #fff;
+    }
+  </style>
+</head>
+<body>
+
+<div id="header">
+  <span id="title">TACTICS</span>
+  <button id="palette-btn">PALETTE</button>
+</div>
+
+<div id="gear-area">
+  <canvas id="gear-canvas"></canvas>
+</div>
+
+<div id="stats">
+  <span class="stat" id="rev-display">REV: 000</span>
+  <span class="stat" id="dir-display">DIR: ---</span>
+</div>
+
+<svg style="display:none" aria-hidden="true">
+  <filter id="noise-filter" x="0%" y="0%" width="100%" height="100%">
+    <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch"/>
+  </filter>
+</svg>
+<div id="pawl"></div>
+<div class="noise"></div>
+<div class="scanlines"></div>
+<div class="vignette"></div>
+
+<script>
+'use strict';
+
+// ─── Palettes ─────────────────────────────────────────────────────────────────
+const PALETTES = [
+  { name: 'GREEN', bg: '#0a0f0a', gear: '#39ff14', glow: '#00ff41', accent: '#7fff00',
+    dark: '#003b0e', shadowColor: 'rgba(0,255,65,0.5)' },
+  { name: 'AMBER', bg: '#0f0a00', gear: '#ffb300', glow: '#ff8c00', accent: '#ffd700',
+    dark: '#3b2000', shadowColor: 'rgba(255,140,0,0.5)' },
+  { name: 'CYBER', bg: '#050010', gear: '#00d4ff', glow: '#00d4ff', accent: '#ff00ff',
+    dark: '#001030', shadowColor: 'rgba(0,212,255,0.35)' },
+];
+
+function loadPaletteIdx() {
+  try { return parseInt(localStorage.getItem('tactics-pal') || '0', 10); }
+  catch (e) { return 0; }
+}
+let paletteIdx = Math.min(loadPaletteIdx(), PALETTES.length - 1);
+
+function pal() { return PALETTES[paletteIdx]; }
+
+function applyPalette() {
+  const p = pal();
+  const r = document.documentElement.style;
+  r.setProperty('--color-bg',     p.bg);
+  r.setProperty('--color-gear',   p.gear);
+  r.setProperty('--color-glow',   p.glow);
+  r.setProperty('--color-accent', p.accent);
+  document.getElementById('palette-btn').textContent = p.name;
+}
+
+document.getElementById('palette-btn').addEventListener('click', () => {
+  paletteIdx = (paletteIdx + 1) % PALETTES.length;
+  try { localStorage.setItem('tactics-pal', String(paletteIdx)); } catch (e) {}
+  applyPalette();
+});
+
+applyPalette();
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const TEETH       = 16;
+const TOOTH_ANGLE = (2 * Math.PI) / TEETH;  // 0.3927 rad = 22.5°
+const TOOTH_HW    = Math.PI / 32;            // tooth half-angular-width: 50% duty cycle (radians ≈ 0.0982)
+const DEAD_ZONE   = 20;                      // CSS pixels
+const HEADER_H    = 40;
+const STATS_H     = 48;
+
+// ─── Canvas setup ─────────────────────────────────────────────────────────────
+const canvas = document.getElementById('gear-canvas');
+const ctx = canvas.getContext('2d', { alpha: false });
+
+let cssSize, internalSize, cx, cy, outerR, innerR, hubR, holeR, cssScale;
+
+function setupCanvas() {
+  const vmin = Math.min(window.innerWidth, window.innerHeight);
+  cssSize      = Math.round(vmin * 0.80);
+  internalSize = Math.round(cssSize / 4);   // quarter-res for pixel art
+
+  canvas.width  = internalSize;
+  canvas.height = internalSize;
+  canvas.style.width  = cssSize + 'px';
+  canvas.style.height = cssSize + 'px';
+  ctx.imageSmoothingEnabled = false;
+
+  cx = internalSize / 2;
+  cy = internalSize / 2;
+
+  const s = internalSize / 160;
+  outerR = 72 * s;
+  innerR = 64 * s;
+  hubR   = 20 * s;
+  holeR  = 7  * s;
+
+  // Factor to convert canvas pixels → CSS pixels
+  cssScale = cssSize / internalSize;  // = 4
+
+  positionPawl();
+}
+
+// ─── Pawl ─────────────────────────────────────────────────────────────────────
+const pawlEl = document.getElementById('pawl');
+let pawlTimer = null;
+
+function positionPawl() {
+  // Compute gear center in viewport CSS coords from layout constants
+  const vcx    = window.innerWidth / 2;
+  const availH = window.innerHeight - HEADER_H - STATS_H;
+  const vcy    = HEADER_H + availH / 2;
+  const outerR_css = outerR * cssScale;
+
+  // Triangle is 12px wide, 10px tall, tip points down at gear
+  pawlEl.style.left = Math.round(vcx - 6) + 'px';
+  pawlEl.style.top  = Math.round(vcy - outerR_css - 14) + 'px';
+}
+
+function firePawl(dir) {
+  if (pawlTimer) clearTimeout(pawlTimer);
+  const dx = dir > 0 ? 4 : -4;
+  pawlEl.classList.add('clicked');
+  pawlEl.style.transform = `translateX(${dx}px) translateY(4px)`;
+  // Hold bright for 30ms, then 80ms ease return via CSS transition
+  pawlTimer = setTimeout(() => {
+    pawlEl.classList.remove('clicked');
+    pawlEl.style.transform = '';
+  }, 30);
+}
+
+// ─── State ────────────────────────────────────────────────────────────────────
+let gearRotation   = 0;   // cumulative rotation for rendering + tooth detection
+let totalRotation  = 0;   // cumulative absolute rotation for REV counter
+let lastDir        = 0;   // +1 CW, -1 CCW, 0 still
+let prevTooth      = 0;
+
+let tracking       = false;
+let capturedId     = null;
+let prevAngle      = 0;
+let wasInDeadZone  = false;
+
+// Symmetric tooth index: boundaries at ±half-tooth, so CW and CCW fire identically
+function toothIndex(rot) {
+  return Math.floor((rot + TOOTH_ANGLE / 2) / TOOTH_ANGLE);
+}
+
+// ─── iOS Audio ────────────────────────────────────────────────────────────────
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+let audioCtx = null;
+
+function initAudio() {
+  if (audioCtx) return;
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  } catch (e) { /* silent */ }
+}
+
+function playClick() {
+  if (!audioCtx) return;
+  try {
+    const sr  = audioCtx.sampleRate;
+    const len = Math.floor(sr * 0.02);
+    const buf = audioCtx.createBuffer(1, len, sr);
+    const d   = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) {
+      d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 8);
+    }
+    const src  = audioCtx.createBufferSource();
+    src.buffer = buf;
+    const gain = audioCtx.createGain();
+    gain.gain.value = 0.4;
+    src.connect(gain);
+    gain.connect(audioCtx.destination);
+    src.start();
+  } catch (e) { /* silent */ }
+}
+
+// ─── Fire click (haptics + pawl) ──────────────────────────────────────────────
+function fireClick(dir) {
+  if (navigator.vibrate) navigator.vibrate(8);
+  if (isIOS) playClick();
+  firePawl(dir);
+}
+
+// ─── Pointer event helpers ────────────────────────────────────────────────────
+function pointerState(e) {
+  // Convert pointer viewport coords to canvas-pixel coords
+  const rect   = canvas.getBoundingClientRect();
+  const cpx    = (e.clientX - rect.left) / cssScale;
+  const cpy    = (e.clientY - rect.top)  / cssScale;
+  const dcx    = cpx - cx;
+  const dcy    = cpy - cy;
+  const cssDist = Math.sqrt(
+    (e.clientX - rect.left - cssSize / 2) ** 2 +
+    (e.clientY - rect.top  - cssSize / 2) ** 2
+  );
+  return { angle: Math.atan2(dcy, dcx), cssDist };
+}
+
+canvas.addEventListener('pointerdown', e => {
+  if (tracking) return;
+  if (isIOS) {
+    initAudio();
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  }
+
+  tracking   = true;
+  capturedId = e.pointerId;
+  canvas.setPointerCapture(e.pointerId);
+
+  const { angle, cssDist } = pointerState(e);
+  if (cssDist < DEAD_ZONE) {
+    wasInDeadZone = true;
+    // prevAngle/prevTooth set when pointer exits dead zone
+  } else {
+    prevAngle     = angle;
+    wasInDeadZone = false;
+    prevTooth     = toothIndex(gearRotation);
+  }
+});
+
+canvas.addEventListener('pointermove', e => {
+  if (!tracking || e.pointerId !== capturedId) return;
+
+  const { angle, cssDist } = pointerState(e);
+
+  if (cssDist < DEAD_ZONE) {
+    wasInDeadZone = true;
+    return;
+  }
+
+  // Exiting dead zone: sync prevAngle/prevTooth to avoid jump
+  if (wasInDeadZone) {
+    prevAngle     = angle;
+    wasInDeadZone = false;
+    prevTooth     = toothIndex(gearRotation);
+    return;
+  }
+
+  let delta = angle - prevAngle;
+  if (delta >  Math.PI) delta -= 2 * Math.PI;
+  if (delta < -Math.PI) delta += 2 * Math.PI;
+
+  const prevRot = gearRotation;
+  gearRotation  += delta;
+  totalRotation += Math.abs(delta);
+
+  if (Math.abs(delta) > 0.00005) {
+    lastDir = delta > 0 ? 1 : -1;
+  }
+
+  prevAngle = angle;
+
+  // Tooth crossing detection — symmetric in both directions
+  const currTooth  = toothIndex(gearRotation);
+  const crossed    = Math.abs(currTooth - prevTooth);
+  const clickDir   = lastDir;
+  for (let i = 0; i < crossed; i++) fireClick(clickDir);
+  prevTooth = currTooth;
+});
+
+function endTracking(e) {
+  if (!capturedId || e.pointerId !== capturedId) return;
+  tracking   = false;
+  capturedId = null;
+}
+
+canvas.addEventListener('pointerup',     endTracking);
+canvas.addEventListener('pointercancel', endTracking);
+
+// ─── Render ───────────────────────────────────────────────────────────────────
+function drawGear() {
+  const p = pal();
+
+  // Background
+  ctx.fillStyle = p.bg;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.save();
+  ctx.shadowBlur  = 18 * (internalSize / 160);
+  ctx.shadowColor = p.shadowColor;
+
+  ctx.translate(cx, cy);
+  ctx.rotate(gearRotation);
+
+  // Gear profile: 16 teeth + arcs through gaps
+  ctx.beginPath();
+  for (let i = 0; i < TEETH; i++) {
+    const θ  = (i / TEETH) * 2 * Math.PI;
+    const θn = ((i + 1) / TEETH) * 2 * Math.PI;
+
+    const rlx = Math.round(innerR * Math.cos(θ - TOOTH_HW));
+    const rly = Math.round(innerR * Math.sin(θ - TOOTH_HW));
+    const tlx = Math.round(outerR * Math.cos(θ - TOOTH_HW));
+    const tly = Math.round(outerR * Math.sin(θ - TOOTH_HW));
+    const ttx = Math.round(outerR * Math.cos(θ + TOOTH_HW));
+    const tty = Math.round(outerR * Math.sin(θ + TOOTH_HW));
+    const rtx = Math.round(innerR * Math.cos(θ + TOOTH_HW));
+    const rty = Math.round(innerR * Math.sin(θ + TOOTH_HW));
+
+    if (i === 0) ctx.moveTo(rlx, rly);
+    ctx.lineTo(tlx, tly);  // radially out to leading tip
+    ctx.lineTo(ttx, tty);  // across tooth top
+    ctx.lineTo(rtx, rty);  // radially in to trailing root
+    ctx.arc(0, 0, innerR, θ + TOOTH_HW, θn - TOOTH_HW); // gap arc
+  }
+  ctx.closePath();
+
+  ctx.fillStyle   = p.gear;
+  ctx.fill();
+  ctx.shadowBlur  = 0;
+  ctx.strokeStyle = p.dark;
+  ctx.lineWidth   = Math.max(1, Math.round(2 * internalSize / 160));
+  ctx.stroke();
+
+  // Hub
+  ctx.beginPath();
+  ctx.arc(0, 0, hubR, 0, Math.PI * 2);
+  ctx.fillStyle = p.dark;
+  ctx.fill();
+
+  // Center hole
+  ctx.beginPath();
+  ctx.arc(0, 0, holeR, 0, Math.PI * 2);
+  ctx.fillStyle = p.bg;
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function updateStats() {
+  const revs = Math.floor(totalRotation / (2 * Math.PI));
+  document.getElementById('rev-display').textContent =
+    'REV: ' + revs.toString().padStart(3, '0');
+  document.getElementById('dir-display').textContent =
+    'DIR: ' + (lastDir > 0 ? 'CW' : lastDir < 0 ? 'CCW' : '---');
+}
+
+function render() {
+  drawGear();
+  updateStats();
+  requestAnimationFrame(render);
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+window.addEventListener('resize', setupCanvas);
+
+setupCanvas();
+render();
+</script>
+</body>
+</html>
